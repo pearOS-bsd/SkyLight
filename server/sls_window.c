@@ -3,6 +3,8 @@
 #include "wsd_priv.h"
 #include "bplist.h"
 #include "ws_region.h"
+#include "ws_buffer.h"
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
