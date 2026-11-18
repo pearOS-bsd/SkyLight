@@ -13,5 +13,5 @@ The window server of the Mac speaks the SkyLight protocol (SLS / CGS: MIG messag
 Used by `pearOS-bsd/WindowServer` (`make SKYLIGHT=path/of/SkyLight`; the default is `../SkyLight`): its Makefile compiles `server/*.c` into wsd and `client/skylight.c` into the shim, with `-I<SkyLight>/include`.
 The recordings the generators read (`docs/golden`) and the tests that exercise the shim (`test_shim*`, `test_wire`, `test_golden`) stay with the WindowServer.
 
-## Open item (2026-11-18): the appearance theme
-`SLSSetAppearanceThemeLegacy(x)` is `SLSSetAppearanceThemeOptions(x, 1)` in the real SkyLight (REA); the real Control Center's Dark Mode button changes the appearance through SkyLight and the system keeps the global preference `AppleInterfaceStyle` in step with it. Our handlers must do exactly what the real server and client do (what is written, which notifications go out): not traced yet, see `pearOS-bsd/docs` development/CONTROLCENTER-REPLACEMENT.md, section "Dark Mode".
+## Appearance theme (2026-11-18)
+`SLSSetAppearanceThemeLegacy(x)` is `SLSSetAppearanceThemeOptions(x, 1)` in the real SkyLight (REA). On a Mac the window server also writes the global preference `AppleInterfaceStyle` (1 -> "Dark", 0 -> key removed; measured on 26.7.2). `server/sls_session.c` keeps the theme (30175 / 30176, default dark); writing the preference and the notification are still to do. See `pearOS-bsd/docs` development/CONTROLCENTER-REPLACEMENT.md, section "Dark Mode".

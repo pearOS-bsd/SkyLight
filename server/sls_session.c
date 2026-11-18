@@ -14,6 +14,7 @@ int sls_golden_reply(conn *c, const mach_msg_header_t *h);
 /* CreateApplication (30283): the process record a connection needs for key focus and the process calls. Request: PSN@0x20 (hi, lo), session id@0x28,
  * pid@0x2c, application type@0x30 (1..4), euid@0x34, name offset@0x38, name length@0x3c (<= 0x80), name@0x40, then flag byte, two u32. Size = pad4(len) + 0x4c.
  * Unverified live: which argument combinations the real server accepts (a zero session id gives -50 there). */
+static int appearance_theme = -1;                               /* -1: not read yet */
 static int do_create_application(conn *c, const uint8_t *buf, size_t len)
 {
 	const mach_msg_header_t *h = (const mach_msg_header_t *)buf;
@@ -106,9 +107,16 @@ static int do_system_ui_query(conn *c, const uint8_t *buf, size_t len)
 	case SLS_MSG_GetSystemUIHasRTLDirection:
 		if (!simple_ok(h, len, 0x18)) return -2;
 		return reply_value(c->fd, h, system_ui_rtl);
-	case SLS_MSG_GetAppearanceTheme: case SLS_MSG_GetDebugOptions:
+	case SLS_MSG_SetAppearanceTheme:                                      /* SLSSetAppearanceThemeLegacy(x) = SLSSetAppearanceThemeOptions(x, 1) (REA): theme int@0x20 (1 dark, 0 light), options@0x24.  On a Mac the window server also keeps the global preference AppleInterfaceStyle in step (observed: theme 1 -> "Dark", 0 -> key removed): not done here yet. */
+		if (!simple_ok(h, len, 0x28)) return reply_simple(c->fd, h, -304);
+		appearance_theme = rd32(buf, 0x20) != 0; return reply_simple(c->fd, h, 0);
+	case SLS_MSG_GetAppearanceTheme:
 		if (!simple_ok(h, len, 0x18)) return -2;
-		return reply_value(c->fd, h, 0);                                  /* light appearance, no debug options */
+		if (appearance_theme < 0) { const char *e = getenv("WSD_APPEARANCE"); appearance_theme = !(e && !strcmp(e, "light")); }
+		return reply_value(c->fd, h, appearance_theme);                   /* dark by default (the image's default look; WSD_APPEARANCE=light to change) */
+	case SLS_MSG_GetDebugOptions:
+		if (!simple_ok(h, len, 0x18)) return -2;
+		return reply_value(c->fd, h, 0);                                  /* no debug options */
 	case SLS_MSG_GetDockRectWithReason: {                               /* reply 0x3c: retcode, rect (4 floats), two u32: no Dock, empty rect */
 		if (!simple_ok(h, len, 0x18)) return -2;
 		uint8_t r[0x3c]; memset(r, 0, sizeof r);

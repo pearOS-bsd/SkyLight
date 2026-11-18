@@ -13,6 +13,15 @@
 #define MAXPROPS 512
 static struct { int used; uint32_t wid; char key[130]; uint8_t *data; uint32_t len; } props[MAXPROPS];
 static struct { int used; uint32_t wid, ctx; } layer_ctx[256];
+/* CreateWindow of macOS 26 carries the CA context id (the window made by SLSNewWindowWithOpaqueShapeAndContext): bound here, at creation; the separate SetWindowLayerContext message is not sent by that SkyLight for such windows */
+void wsd_bind_layer_ctx(uint32_t wid, uint32_t ctx)
+{
+	int slot = -1;
+	if (!wid || !ctx) return;
+	for (int i = 0; i < 256; i++) if (layer_ctx[i].used && layer_ctx[i].wid == wid) slot = i;
+	for (int i = 0; i < 256 && slot < 0; i++) if (!layer_ctx[i].used) slot = i;
+	if (slot >= 0) { layer_ctx[slot].used = 1; layer_ctx[slot].wid = wid; layer_ctx[slot].ctx = ctx; }
+}
 uint32_t wsd_layer_ctx_window(uint32_t ctx) { for (int i = 0; i < 256; i++) if (layer_ctx[i].used && layer_ctx[i].ctx == ctx) return layer_ctx[i].wid; return 0; }	/* the window that a CA context was bound to (SetWindowLayerContext), 0: none */
 
 /* a copy of a named window value (SetWindowProperty); the length, or -1 when the window has no such value */
