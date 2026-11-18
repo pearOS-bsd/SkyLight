@@ -112,8 +112,8 @@ static int do_system_ui_query(conn *c, const uint8_t *buf, size_t len)
 		appearance_theme = rd32(buf, 0x20) != 0; return reply_simple(c->fd, h, 0);
 	case SLS_MSG_GetAppearanceTheme:
 		if (!simple_ok(h, len, 0x18)) return -2;
-		if (appearance_theme < 0) { const char *e = getenv("WSD_APPEARANCE"); appearance_theme = !(e && !strcmp(e, "light")); }
-		return reply_value(c->fd, h, appearance_theme);                   /* dark by default (the image's default look; WSD_APPEARANCE=light to change) */
+		if (appearance_theme < 0) { const char *e = getenv("WSD_APPEARANCE"); appearance_theme = e && !strcmp(e, "dark"); }
+		return reply_value(c->fd, h, appearance_theme);                   /* light by default, like the recorded real server (golden 30176); the Mac desktop scripts start the server with WSD_APPEARANCE=dark (the image's default look) */
 	case SLS_MSG_GetDebugOptions:
 		if (!simple_ok(h, len, 0x18)) return -2;
 		return reply_value(c->fd, h, 0);                                  /* no debug options */
@@ -229,7 +229,7 @@ static uint32_t wq_window(wq_buf *b, ws_wid id)
  * query stream of n bytes@0x2c, size = pad4(n) + 0x2c. The reply is a complex message with one out-of-line descriptor slot and an inline stream:
  * descriptor count 1@0x18, address@0x1c (0 when inline), 0x01000101@0x24, size@0x28 (0 when inline), NDR@0x2c, inline length@0x34, stream@0x38, then the OOL size again;
  * size = pad4(len) + 0x3c. The stream starts with three 0xffffffff slots (window / space / display index lists, filled in when a list is not empty).
- * Only the empty result is produced: wsd answers every query with no windows, no spaces and no displays (encode_window is not reproduced yet). */
+ * Only the empty result is produced: WindowServer answers every query with no windows, no spaces and no displays (encode_window is not reproduced yet). */
 extern int wsd_screen_w, wsd_screen_h;
 /* The display record of a flags&8 query, recorded on a macOS runner: the display's desktop window (a window record with the extra fields a desktop window carries), then
  * u32 1, u32 offset of that window, then the display itself (marker 3, 16 byte UUID, frame, flag byte 7, space list slot, offset of the u32 1). */
@@ -461,7 +461,7 @@ int sls_session_dispatch(conn *c, const uint8_t *buf, size_t len)
 		uint32_t n = rd32(buf, 0x20);
 		if (n > 256 || h->msgh_size != 0x24 + 4 * n) return reply_simple(c->fd, h, -304);
 		c->notify_n = n; memcpy(c->notify, buf + 0x24, 4 * n);
-		if (getenv("WSD_TRACE")) { fprintf(stderr, "wsd: conn %u (pid %d) connection notify interests:", c->id, c->pid); for (uint32_t q = 0; q < n; q++) fprintf(stderr, " %u", c->notify[q]); fprintf(stderr, "\n"); }
+		if (getenv("WSD_TRACE")) { fprintf(stderr, "WindowServer: conn %u (pid %d) connection notify interests:", c->id, c->pid); for (uint32_t q = 0; q < n; q++) fprintf(stderr, " %u", c->notify[q]); fprintf(stderr, "\n"); }
 		return reply_simple(c->fd, h, 0);
 	}
 	if (h->msgh_id == SLS_MSG_SetUniversalOwner) {				/* SLSSetUniversalOwner: header only (the connection is the port that it was sent to); the Dock of the Mac calls it at start and exits when it fails */
@@ -472,7 +472,7 @@ int sls_session_dispatch(conn *c, const uint8_t *buf, size_t len)
 		if ((h->msgh_bits & MACH_MSGH_BITS_COMPLEX) || len != h->msgh_size || h->msgh_size < 0x28) return reply_simple(c->fd, h, -304);
 		uint32_t n = rd32(buf, 0x24);
 		if (n > 256 || h->msgh_size != 0x28 + 4 * n || rd32(buf, 0x20) > 2) return reply_simple(c->fd, h, -304);
-		if (getenv("WSD_TRACE")) { fprintf(stderr, "wsd: conn %u (pid %d) process notify interests (mode %u):", c->id, c->pid, rd32(buf, 0x20)); for (uint32_t q = 0; q < n; q++) fprintf(stderr, " %u", rd32(buf, 0x28 + 4 * q)); fprintf(stderr, "\n"); }
+		if (getenv("WSD_TRACE")) { fprintf(stderr, "WindowServer: conn %u (pid %d) process notify interests (mode %u):", c->id, c->pid, rd32(buf, 0x20)); for (uint32_t q = 0; q < n; q++) fprintf(stderr, " %u", rd32(buf, 0x28 + 4 * q)); fprintf(stderr, "\n"); }
 		return reply_simple(c->fd, h, 0);			/* the Dock of the Mac sends this from SLSNewConnection (ProcessNotifier::synchronize_all) before any process record exists and aborts on an error: accepted for every connection */
 	}
 	if (h->msgh_id == SLS_MSG_SetKeyTranslationTable) {                                // complex: OOL table, size 0x38, descriptor size repeated @0x34

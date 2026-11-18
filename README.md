@@ -10,7 +10,7 @@ The window server of the Mac speaks the SkyLight protocol (SLS / CGS: MIG messag
 | `tools/` | the generators of the generated files (`gen_golden.py`, `gen_generic.py`, `gen_blobs.py`, `gen_hotkeys.py`, `gen_harvest.py`, `gen_zero_ndr.py`, `generic_remaining.py`) |
 | `docs/` | `SPEC-SLS-WIRE.md` (the wire), `EVENT-TAPS.md`, the message/opcode tables of SkyLight 26.7.2 |
 
-Used by `pearOS-bsd/WindowServer` (`make SKYLIGHT=path/of/SkyLight`; the default is `../SkyLight`): its Makefile compiles `server/*.c` into wsd and `client/skylight.c` into the shim, with `-I<SkyLight>/include`.
+Used by `pearOS-bsd/WindowServer` (`make SKYLIGHT=path/of/SkyLight`; the default is `../SkyLight`): its Makefile compiles `server/*.c` into WindowServer and `client/skylight.c` into the shim, with `-I<SkyLight>/include`.
 The recordings the generators read (`docs/golden`) and the tests that exercise the shim (`test_shim*`, `test_wire`, `test_golden`) stay with the WindowServer.
 
 ## Appearance theme (2026-11-18)

@@ -80,7 +80,7 @@ static int run_stream(conn *c, const uint8_t *p, size_t n)
 	while (r.n) {
 		int op = get_byte(&r);
 		if (op == 0xff) return 0;
-		if (getenv("WSD_TRACE")) fprintf(stderr, "wsd: transaction op %#x (%zu bytes left, pid %d)\n", op, r.n, c->pid);
+		if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: transaction op %#x (%zu bytes left, pid %d)\n", op, r.n, c->pid);
 		if (op < 1 || op > 0x8c) return 1001;                                    /* "invalid transaction opcode" */
 		op = op_translate(op);
 		switch (op) {
@@ -88,9 +88,9 @@ static int run_stream(conn *c, const uint8_t *p, size_t n)
 		case OP_ORDER_WINDOW: {
 			uint32_t wid = (uint32_t)get_packed(&r); int mode = (int8_t)get_byte(&r); uint32_t rel = (uint32_t)get_packed(&r);
 			if (r.bad) return 1001;
-			if (getenv("WSD_TRACE")) fprintf(stderr, "wsd: transaction order window %u mode %d rel %u rights %d (conn %u pid %d app \"%s\" registered %d)\n", wid, mode, rel, holds_rights(c, wid) != 0, c->id, c->pid, c->app, c->registered);
+			if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: transaction order window %u mode %d rel %u rights %d (conn %u pid %d app \"%s\" registered %d)\n", wid, mode, rel, holds_rights(c, wid) != 0, c->id, c->pid, c->app, c->registered);
 			if (holds_rights(c, wid)) ws_order_window(srv, wid, mode, rel);
-			if (getenv("WSD_TRACE")) fprintf(stderr, "wsd: window %u on screen: %d\n", wid, ws_window_on_screen(srv, wid));
+			if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: window %u on screen: %d\n", wid, ws_window_on_screen(srv, wid));
 			break;
 		}
 		case OP_SET_ALPHA: {
@@ -228,7 +228,7 @@ static int run_stream(conn *c, const uint8_t *p, size_t n)
 			(void)wid;                                                              /* content blur: accepted, drawn by the layer tree later */
 			break;
 		}
-		default: if (getenv("WSD_TRACE")) fprintf(stderr, "wsd: transaction op %#x not decoded\n", op); return 1001;                                                        /* a valid opcode this server does not decode yet */
+		default: if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: transaction op %#x not decoded\n", op); return 1001;                                                        /* a valid opcode this server does not decode yet */
 		}
 	}
 	return 0;

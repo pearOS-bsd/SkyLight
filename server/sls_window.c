@@ -149,7 +149,7 @@ static int cif_find(uint32_t id) { for (int i = 0; i < MAXCIF; i++) if (cif[i].i
 static uint32_t mouse_enable[64]; static uint32_t mouse_enable_wid[64];
 extern int wsd_screen_w, wsd_screen_h;
 static float zoom_scale = 1.0f; static int32_t zoom_x = INT32_MIN, zoom_y = INT32_MIN; static uint32_t zoom_flag;
-static uint32_t menubar_style; static uint8_t menubar_autohide, menubar_blurred;      /* menu bar state (a menu bar always exists on wsd's single display) */
+static uint32_t menubar_style; static uint8_t menubar_autohide, menubar_blurred;      /* menu bar state (a menu bar always exists on WindowServer's single display) */
 
 /* per-window attributes the simple setters keep: depth, one-shot flag, backing alpha, autofill colour, client perceived type */
 #define MAXATTR 512
@@ -307,7 +307,7 @@ int sls_window_dispatch(conn *c, const uint8_t *buf, size_t len)
 		if (osz < 0) return reply_simple(c->fd, h, err);
 		if ((uint32_t)osz != rd32(buf, 0x48)) return reply_simple(c->fd, h, -300);
 		uint32_t type = rd32(buf, 0x34), wid = rd32(buf, 0x38); uint64_t id; memcpy(&id, buf + 0x50, 8);
-		if (type >= 2) { if (getenv("WSD_TRACE")) fprintf(stderr, "wsd: AddStructuralRegionOfType type %u accepted without effect\n", type); return reply_simple(c->fd, h, 0); }		/* (the AppKit of macOS 26 asks for other types: refusing made it ask again and again) */
+		if (type >= 2) { if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: AddStructuralRegionOfType type %u accepted without effect\n", type); return reply_simple(c->fd, h, 0); }		/* (the AppKit of macOS 26 asks for other types: refusing made it ask again and again) */
 		if (type & 1) {                                                             /* a tracking region: the pointer entering/leaving it is reported */
 			ws_rect *rc = NULL; int nr = 0; ws_rect bb;
 			if (osz && ws_region_parse(buf + 0x58, (uint32_t)osz, &rc, &nr, &bb) == 0 && holds_rights(c, wid)) ws_tracking_set(srv, id, wid, rc, nr);
@@ -1120,7 +1120,7 @@ int sls_window_dispatch(conn *c, const uint8_t *buf, size_t len)
 		uint64_t *spaces = malloc(count * 8 + 8);
 		if (!spaces) return reply_simple(c->fd, h, 1000);
 		for (uint32_t i = 0; i < count; i++) spaces[i] = sls_space_of_window(rd32(buf, 0x3c + 4 * i));   /* the space each window was put in (the default one otherwise) */
-		if (getenv("WSD_TRACE") && count) { static int nt; if (nt++ < 12) fprintf(stderr, "wsd: CopySpacesForWindows n=%u w0=%u -> space %llu (conn %d)\n", count, rd32(buf, 0x3c), (unsigned long long)spaces[0], c->id); }
+		if (getenv("WSD_TRACE") && count) { static int nt; if (nt++ < 12) fprintf(stderr, "WindowServer: CopySpacesForWindows n=%u w0=%u -> space %llu (conn %d)\n", count, rd32(buf, 0x3c), (unsigned long long)spaces[0], c->id); }
 		uint8_t m[0x38]; memset(m, 0, sizeof m);
 		fill_reply_header((mach_msg_header_t *)m, h, sizeof m, 1);
 		wr32(m, 0x18, 1); m[0x24] = 1; m[0x25] = 1; m[0x27] = 1; wr32(m, 0x28, count * 8); memcpy(m + 0x2c, &WS_NDR, 8); wr32(m, 0x34, count);
@@ -1135,7 +1135,7 @@ int sls_window_dispatch(conn *c, const uint8_t *buf, size_t len)
 	case SLS_MSG_SetWindowLayerContext: {                                          /* wid@0x20, CA context id@0x24: 1002 without rights, else 0 */
 		if (!simple_ok(h, len, 0x28)) return reply_simple(c->fd, h, -304);
 		uint32_t wid = rd32(buf, 0x20), ctx = rd32(buf, 0x24);
-		if (getenv("WSD_TRACE")) fprintf(stderr, "wsd: SetWindowLayerContext window %u context %u (pid %d)\n", wid, ctx, c->pid);
+		if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: SetWindowLayerContext window %u context %u (pid %d)\n", wid, ctx, c->pid);
 		if (!holds_rights(c, wid)) return reply_simple(c->fd, h, 1002);
 		int slot = -1;
 		for (int i = 0; i < 256; i++) if (layer_ctx[i].used && layer_ctx[i].wid == wid) slot = i;

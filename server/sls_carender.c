@@ -1,5 +1,5 @@
-/* The CoreAnimation render server of wsd: the commits of the clients arrive from carender-stub (the Mach side, one per system) on a stream socket, are decoded and composed by
- * ca_scene.c into the backing store of a window of wsd, and that window goes through the compositor of wsd like any other.
+/* The CoreAnimation render server of WindowServer: the commits of the clients arrive from carender-stub (the Mach side, one per system) on a stream socket, are decoded and composed by
+ * ca_scene.c into the backing store of a window of WindowServer, and that window goes through the compositor of WindowServer like any other.
  *
  * Wire (SOCK_STREAM): records  u32 type, u32 length, payload.
  *   type 1: a commit message (the bytes of the Mach message of the render server protocol, from the header on)
@@ -76,7 +76,7 @@ static int ca_dirty[CA_WINS];
 
 
 /* How Apple does it: every render context (CAContext) of a client has its own tree of layers, and the window server shows the tree in the window that the context was bound to
- * (SetWindowLayerContext), at the frame of that window, with its level and order.  So a window of wsd for each context with a root layer: the frame, level and order of the window that its
+ * (SetWindowLayerContext), at the frame of that window, with its level and order.  So a window of WindowServer for each context with a root layer: the frame, level and order of the window that its
  * context is bound to; a context that is bound to none (the Dock's layers) fills the screen.  A client whose contexts have no root yet is painted as one scene on the screen. */
 #define CA_CTXS 8
 static ws_wid ca_cwins[CA_WINS][CA_CTXS + 1];		/* [scene][root index]; the last one: the whole scene (no roots known) */
@@ -103,7 +103,7 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 		ca_cwins[scene][slot] = w; ca_cw[scene][slot] = fr.w; ca_ch[scene][slot] = fr.h;
 		ws_set_window_level(srv, w, bound ? lvl : (lv ? atoi(lv) : 5));
 		ws_order_window(srv, w, WS_ABOVE, bound ? bound : 0);
-		fprintf(stderr, "wsd: render context %u (client %u): window %u%s (%d,%d %dx%d)\n", (unsigned)ctx, (unsigned)ca_scene_ctx(scene), (unsigned)w, bound ? " at the window of the client" : "", fr.x, fr.y, fr.w, fr.h);
+		fprintf(stderr, "WindowServer: render context %u (client %u): window %u%s (%d,%d %dx%d)\n", (unsigned)ctx, (unsigned)ca_scene_ctx(scene), (unsigned)w, bound ? " at the window of the client" : "", fr.x, fr.y, fr.w, fr.h);
 	} else if (bound) {
 		ws_move_window(srv, ca_cwins[scene][slot], fr.x, fr.y);
 		ws_set_window_level(srv, ca_cwins[scene][slot], lvl);
@@ -130,8 +130,8 @@ static void repaint(ws_server *srv, int sw, int sh)
 		ca_dirty[i] = 0;
 		if (nr == 0) ca_show(srv, sw, sh, i, CA_CTXS, 0, -1);
 		for (int k = 0; k < nr && k < CA_CTXS; k++) ca_show(srv, sw, sh, i, k, ca_scene_root_ctx(i, k), k);
-		if (getenv("WSD_CA_DEBUG")) for (int k = 0; k < nr && k < CA_CTXS; k++) { uint32_t cx = ca_scene_root_ctx(i, k); fprintf(stderr, "wsd:   scene %d root %d: context %u bound to window %u\n", i, k, (unsigned)cx, (unsigned)wsd_layer_ctx_window(cx)); }
-		if (getenv("WSD_CA_DEBUG")) { int nl, ni; ca_scene_info(i, &nl, &ni); fprintf(stderr, "wsd: scene %d (client %u): %d layers, %d images, %d contexts\n", i, (unsigned)ca_scene_ctx(i), nl, ni, nr); }
+		if (getenv("WSD_CA_DEBUG")) for (int k = 0; k < nr && k < CA_CTXS; k++) { uint32_t cx = ca_scene_root_ctx(i, k); fprintf(stderr, "WindowServer:   scene %d root %d: context %u bound to window %u\n", i, k, (unsigned)cx, (unsigned)wsd_layer_ctx_window(cx)); }
+		if (getenv("WSD_CA_DEBUG")) { int nl, ni; ca_scene_info(i, &nl, &ni); fprintf(stderr, "WindowServer: scene %d (client %u): %d layers, %d images, %d contexts\n", i, (unsigned)ca_scene_ctx(i), nl, ni, nr); }
 	}
 	ws_server_invalidate(srv);
 }

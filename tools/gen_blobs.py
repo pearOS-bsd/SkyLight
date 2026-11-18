@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generates server/sls_blobs.c: the binary property lists wsd answers CopyManagedDisplays (30389) and GetDevices (30456) with. Same shape as the real server's replies
-(recorded on the macOS runner); the display UUID and the device list describe wsd's own display and input devices."""
+"""Generates server/sls_blobs.c: the binary property lists WindowServer answers CopyManagedDisplays (30389) and GetDevices (30456) with. Same shape as the real server's replies
+(recorded on the macOS runner); the display UUID and the device list describe WindowServer's own display and input devices."""
 import plistlib,sys
 UUID='5E1D1A5B-0C3E-4D5B-9D2A-6F57A5B0C0DE'
 displays=plistlib.dumps([UUID],fmt=plistlib.FMT_BINARY)

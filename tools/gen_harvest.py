@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Turns docs/golden/harvest-*.txt (replies of the real WindowServer to fixed-size requests with zero / window / connection arguments) into server/sls_harvest.c:
-the default answer of wsd for a routine that has no dedicated handler yet. variant 0: all arguments zero; 1: first argument a window owned by the caller; 2: first argument the
+the default answer of WindowServer for a routine that has no dedicated handler yet. variant 0: all arguments zero; 1: first argument a window owned by the caller; 2: first argument the
 caller's connection id. Only success shapes recorded in a fresh session: this is a placeholder with the right sizes and error codes, to be replaced by real behaviour."""
 import re,sys,collections
 recs=collections.defaultdict(dict)

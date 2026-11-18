@@ -1,5 +1,5 @@
 /* The client API of SkyLight (the SLS and CGS functions) as wsbsd's shim implements it. Names, argument order and result codes follow the real library;
- * the implementation (shim/skylight.c) speaks the SkyLight MIG protocol to wsd. */
+ * the implementation (shim/skylight.c) speaks the SkyLight MIG protocol to WindowServer. */
 #ifndef WSBSD_SKYLIGHT_H
 #define WSBSD_SKYLIGHT_H
 #include <stdint.h>
