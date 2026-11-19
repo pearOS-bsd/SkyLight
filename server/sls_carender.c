@@ -19,7 +19,7 @@
 #include "wsd_priv.h"
 
 #define CA_MAXC 4
-#define CA_OOLN 128
+#define CA_OOLN 512
 static struct { int fd; uint8_t *buf; size_t n, cap; } cl[CA_MAXC];
 static struct { int used, msg, desc; uint8_t *data; size_t size; } ool[CA_OOLN];
 static uint8_t *ool_take(void *ctx, int msg, int desc, size_t *sz)
