@@ -112,8 +112,8 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 	if ((b = ws_window_backing(srv, ca_cwins[scene][slot])) == NULL) return;
 	if (root >= 0) ca_paint_root(scene, root, b->px, b->w, b->h, (int)b->stride);
 	if (root >= 0 && bound) {		/* the Liquid Glass of the context (CASDFElementLayers): the glass of the window it is bound to, drawn by the compositor under the content */
-		ca_glass gl[16]; int ng = ca_scene_glass(scene, root, b->h, gl, 16);
-		for (int q = 0; q < 16; q++) { if (q < ng) ws_set_window_glass_slot(srv, bound, q, (ws_rect){ gl[q].x, gl[q].y, gl[q].w, gl[q].h }, gl[q].radius, gl[q].mode); else if (ca_glass_used[scene][slot] > q) ws_set_window_glass_slot(srv, bound, q, (ws_rect){ 0, 0, 0, 0 }, 0, 0); }
+		ca_glass gl[32]; int ng = ca_scene_glass(scene, root, b->h, gl, 32);
+		for (int q = 0; q < 32; q++) { if (q < ng) ws_set_window_glass_slot(srv, bound, q, (ws_rect){ gl[q].x, gl[q].y, gl[q].w, gl[q].h }, gl[q].radius, gl[q].mode); else if (ca_glass_used[scene][slot] > q) ws_set_window_glass_slot(srv, bound, q, (ws_rect){ 0, 0, 0, 0 }, 0, 0); }
 		ca_glass_used[scene][slot] = ng;
 	}
 	else ca_paint_scene(scene, b->px, b->w, b->h, (int)b->stride);

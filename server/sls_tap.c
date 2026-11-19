@@ -1,3 +1,4 @@
+#include <stdio.h>
 /* Event tap registry (decompiled __XPlaceTap, __XPlaceTapOnConnection, __XReleaseEventTap, __XEnableEventTap, __XEventTapIsEnabled, __XGetEventTapList,
  * __XSetEventTapTimeout, __XGetEventTapTimeout, __XSetEventTapOption). The taps are kept per tapping connection and removed when it goes away.
  * Not implemented: handing the events to the tapping process (the tap's reply port); the registry is what the queries observe. */
@@ -35,10 +36,11 @@ static int send_tap(tap_t *t, const uint8_t *rec, size_t n)                     
 }
 void sls_tap_deliver(int cgtype, const uint8_t *rec, size_t n)
 {
+	static int seen; int hit = 0; if (seen < 30 && cgtype != 5) { for (int i = 0; i < MAXTAPS; i++) hit += taps[i].used; fprintf(stderr, "sls_tap: event type %d, %d taps registered\n", cgtype, hit); seen++; }
 	for (int i = 0; i < MAXTAPS; i++) {
 		tap_t *t = &taps[i];
 		if (!t->used || !t->enabled || !(t->options & 1) || cgtype < 0 || cgtype > 31 || !((t->mask >> cgtype) & 1)) continue;
-		send_tap(t, rec, n);
+		int s = send_tap(t, rec, n); static int sent; if (sent < 20) { fprintf(stderr, "sls_tap: type %d to tap %u: seq %d\n", cgtype, t->id, s); sent++; }
 	}
 }
 
@@ -129,7 +131,7 @@ static int do_place(conn *c, const uint8_t *buf, size_t len, int on_conn)
 	uint32_t owner = c->id; int pid = c->pid;
 	if (on_conn) { conn *o = wsd_conn_by_id(rd32(buf, 0x1c)); if (!o) return reply_simple(c->fd, h, 1007); owner = o->id; pid = o->pid; }
 	*t = (tap_t){ .used = 1, .id = next_tap++, .owner = owner, .pid = pid, .placement = place, .options = rd32(buf, 0x3c), .mask = rd32(buf, 0x40), .port = rd32(buf, 0x1c), .enabled = 1 };
-	memcpy(&t->target, buf + 0x34, 8);
+	memcpy(&t->target, buf + 0x34, 8); fprintf(stderr, "sls_tap: placed tap %u owner %u pid %d options 0x%x mask 0x%x place %u\n", t->id, t->owner, t->pid, t->options, t->mask, place);
 	uint8_t r[0x2c]; memset(r, 0, sizeof r);
 	fill_reply_header((mach_msg_header_t *)r, h, sizeof r, 0);
 	memcpy(r + 0x18, &WS_NDR, 8); wr32(r, 0x24, t->id); wr32(r, 0x28, t->mask);
