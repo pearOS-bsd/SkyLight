@@ -473,6 +473,8 @@ int sls_session_dispatch(conn *c, const uint8_t *buf, size_t len)
 		uint32_t n = rd32(buf, 0x24);
 		if (n > 256 || h->msgh_size != 0x28 + 4 * n || rd32(buf, 0x20) > 2) return reply_simple(c->fd, h, -304);
 		if (getenv("WSD_TRACE")) { fprintf(stderr, "WindowServer: conn %u (pid %d) process notify interests (mode %u):", c->id, c->pid, rd32(buf, 0x20)); for (uint32_t q = 0; q < n; q++) fprintf(stderr, " %u", rd32(buf, 0x28 + 4 * q)); fprintf(stderr, "\n"); }
+		/* the types the process asks for (the process notifier of SkyLight's initDisplays adds 100, 112 to 115, 121 here) are remembered with the connection's interests: they are what display_changed() announces */
+		if (rd32(buf, 0x20) != 2) for (uint32_t q = 0; q < n; q++) { uint32_t ty = rd32(buf, 0x28 + 4 * q), z, have = 0; for (z = 0; z < c->notify_n; z++) if (c->notify[z] == ty) have = 1; if (!have && c->notify_n < 256) c->notify[c->notify_n++] = ty; }
 		return reply_simple(c->fd, h, 0);			/* the Dock of the Mac sends this from SLSNewConnection (ProcessNotifier::synchronize_all) before any process record exists and aborts on an error: accepted for every connection */
 	}
 	if (h->msgh_id == SLS_MSG_SetKeyTranslationTable) {                                // complex: OOL table, size 0x38, descriptor size repeated @0x34
