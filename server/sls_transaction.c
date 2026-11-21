@@ -99,6 +99,13 @@ static int run_stream(conn *c, const uint8_t *p, size_t n)
 			if (holds_rights(c, wid)) ws_set_window_alpha(srv, wid, a);
 			break;
 		}
+		case 15: {					/* SetWindowTransform: wid, two packed values (0x08000000 each: options), then a b c d tx ty as six doubles (found with a Mac: 10 01 | 40 08000000 | 40 08000000 | 88 .. x6 | ff): the order-in animation of AppKit sets the scale (about 1.02) and the offset at every step; kept nowhere yet */
+			uint32_t wid = (uint32_t)get_packed(&r); uint64_t o1 = get_packed(&r), o2 = get_packed(&r); double t[6];
+			for (int i = 0; i < 6; i++) t[i] = get_double(&r);
+			if (r.bad) return 1001;
+			if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: transaction SetWindowTransform window %u options %#llx %#llx [%g %g %g %g %g %g]\n", wid, (unsigned long long)o1, (unsigned long long)o2, t[0], t[1], t[2], t[3], t[4], t[5]);
+			break;
+		}
 		case OP_SET_LEVEL: {
 			uint32_t wid = (uint32_t)get_packed(&r); int lv = (int)get_packed(&r);
 			if (r.bad) return 1001;
