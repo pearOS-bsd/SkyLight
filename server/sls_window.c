@@ -1119,7 +1119,9 @@ int sls_window_dispatch(conn *c, const uint8_t *buf, size_t len)
 		uint32_t count = (uint32_t)osz / 4;
 		uint64_t *spaces = malloc(count * 8 + 8);
 		if (!spaces) return reply_simple(c->fd, h, 1000);
-		for (uint32_t i = 0; i < count; i++) spaces[i] = sls_space_of_window(rd32(buf, 0x3c + 4 * i));   /* the space each window was put in (the default one otherwise) */
+		{ uint32_t n = 0;		/* only windows that are ordered in are on a space: the Mac answers an empty array for a window that was just created (AppKit takes that as 'not yet ordered' and goes on to order it with a transaction) */
+		  for (uint32_t i = 0; i < count; i++) if (ws_window_exists(srv, rd32(buf, 0x3c + 4 * i)) && ws_window_on_screen(srv, rd32(buf, 0x3c + 4 * i))) spaces[n++] = sls_space_of_window(rd32(buf, 0x3c + 4 * i));
+		  count = n; }
 		if (getenv("WSD_TRACE") && count) { static int nt; if (nt++ < 12) fprintf(stderr, "WindowServer: CopySpacesForWindows n=%u w0=%u -> space %llu (conn %d)\n", count, rd32(buf, 0x3c), (unsigned long long)spaces[0], c->id); }
 		uint8_t m[0x38]; memset(m, 0, sizeof m);
 		fill_reply_header((mach_msg_header_t *)m, h, sizeof m, 1);

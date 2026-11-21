@@ -1,5 +1,6 @@
 /* Spaces: a table of spaces (the default user space has id 1), their names and values, the windows assigned to them, and show / hide state. Layouts from the decompiled routines.
  * Not modelled: the managed displays a space is bound to, owners, shapes and tiles. */
+#include <stdio.h>
 #include "wsd_priv.h"
 #include "bplist.h"
 #include "ws_region.h"
@@ -288,9 +289,11 @@ int sls_space_dispatch(conn *c, const uint8_t *buf, size_t len)
 	}
 	case SLS_MSG_ManagedDisplayCurrentSpaceAllowsWindow: {                         /* display UUID@0x20, wid@0x30, size 0x34; reply 0x28: flag byte@0x24 (the window belongs to the shown space); 1001 for an unknown window, 1000 for an unknown display */
 		if (!simple_ok(h, len, 0x34)) return reply_simple(c->fd, h, -304);
+		if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer: ManagedDisplayCurrentSpaceAllowsWindow wid %u exists %d uuid match %d (conn %u)\n", rd32(buf, 0x30), ws_window_exists(srv, rd32(buf, 0x30)), !memcmp(buf + 0x20, display_uuid_bytes, 16), c->id);
 		if (!ws_window_exists(srv, rd32(buf, 0x30))) return reply_simple(c->fd, h, 0x3e9);
 		if (memcmp(buf + 0x20, display_uuid_bytes, 16)) return reply_simple(c->fd, h, 1000);
 		sp_init(); int ok = 0, k = sp_find(sls_space_of_window(rd32(buf, 0x30))); if (k >= 0 && sp[k].shown) ok = 1;
+		if (getenv("WSD_TRACE")) fprintf(stderr, "WindowServer:   -> space %d shown %d allowed %d\n", k, k >= 0 ? sp[k].shown : -1, ok);
 		uint8_t r[0x28]; memset(r, 0, sizeof r);
 		fill_reply_header((mach_msg_header_t *)r, h, sizeof r, 0);
 		memcpy(r + 0x18, &WS_NDR, 8); r[0x24] = (uint8_t)ok;
