@@ -8,6 +8,34 @@
 #include "wsd_priv.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/uio.h>
+#include "ws_buffer.h"
+
+/* XXH64 (seed 0): CoreDisplay checks the 0x1400 bytes of the RealtimeDisplayInfo memory against the 8 bytes after them (found by reading GetLatestRealtimeDisplayInfoMemory, confirmed against a real dump) */
+static uint64_t xxh_rotl(uint64_t x, int r) { return (x << r) | (x >> (64 - r)); }
+static uint64_t xxh_round(uint64_t a, uint64_t i) { return xxh_rotl(a + i * 14029467366897019727ULL, 31) * 11400714785074694791ULL; }
+static uint64_t xxh_merge(uint64_t a, uint64_t v) { a ^= xxh_round(0, v); return a * 11400714785074694791ULL + 9650029242287828579ULL; }
+static uint64_t xxh64(const uint8_t *d, size_t n)
+{
+	const uint64_t P1 = 11400714785074694791ULL, P2 = 14029467366897019727ULL, P3 = 1609587929392839161ULL, P4 = 9650029242287828579ULL, P5 = 2870177450012600261ULL;
+	size_t p = 0; uint64_t h, w; uint32_t w4;
+	if (n >= 32) {
+		uint64_t v[4] = { P1 + P2, P2, 0, (uint64_t)0 - P1 };
+		for (; p + 32 <= n; p += 32) for (int i = 0; i < 4; i++) { memcpy(&w, d + p + 8 * i, 8); v[i] = xxh_round(v[i], w); }
+		h = xxh_rotl(v[0], 1) + xxh_rotl(v[1], 7) + xxh_rotl(v[2], 12) + xxh_rotl(v[3], 18);
+		for (int i = 0; i < 4; i++) h = xxh_merge(h, v[i]);
+	} else h = P5;
+	h += n;
+	for (; p + 8 <= n; p += 8) { memcpy(&w, d + p, 8); h ^= xxh_round(0, w); h = xxh_rotl(h, 27) * P1 + P4; }
+	if (p + 4 <= n) { memcpy(&w4, d + p, 4); h ^= (uint64_t)w4 * P1; h = xxh_rotl(h, 23) * P2 + P3; p += 4; }
+	for (; p < n; p++) { h ^= d[p] * P5; h = xxh_rotl(h, 11) * P1; }
+	h ^= h >> 33; h *= P2; h ^= h >> 29; h *= P3; h ^= h >> 32;
+	return h;
+}
 
 extern const uint32_t disp_head[64], disp_rec[33], disp_tail[16];
 extern int wsd_screen_w, wsd_screen_h;
@@ -42,6 +70,24 @@ size_t sls_display_state(uint8_t *out, size_t cap, int W, int H)
 int sls_display_dispatch(conn *c, const uint8_t *buf, size_t len)
 {
 	const mach_msg_header_t *h = (const mach_msg_header_t *)buf;
+	if (h->msgh_id == SLS_MSG_GetRealtimeDisplayInfoShmem) {                  /* size 0x18; the reply (32107) is complex, 0x28 bytes, one port: a memory of 0x1408 bytes that CoreDisplay maps (GetLatestRealtimeDisplayInfoMemory).
+		 * Layout of a real dump (an idle display): u32 main display id twice, floats 1.0 and 2.0, zeros up to 0x1400, then XXH64 of the 0x1400 bytes.  The real server updates it with the timing of the display; ours has no
+		 * timing to give, the page stays as it is.  Without it CoreDisplay logs "Fail to get RealtimeDisplayInfoShmem port" and SwiftUI's first graph update fails. */
+		if (!simple_ok(h, len, 0x18)) return reply_simple(c->fd, h, -304);
+		uint8_t mem[0x2000]; memset(mem, 0, sizeof mem);
+		uint32_t did = 1; float f1 = 1.0f, f2 = 2.0f;
+		memcpy(mem, &did, 4); memcpy(mem + 4, &did, 4); memcpy(mem + 8, &f1, 4); memcpy(mem + 12, &f2, 4);
+		uint64_t ck = xxh64(mem, 0x1400); memcpy(mem + 0x1400, &ck, 8);
+		int fd = ws_shm_create_anon();
+		if (fd < 0 || ftruncate(fd, sizeof mem) != 0 || write(fd, mem, sizeof mem) != (ssize_t)sizeof mem) { if (fd >= 0) close(fd); return reply_simple(c->fd, h, CGS_ERROR_FAILURE); }
+		uint8_t m[0x28]; memset(m, 0, sizeof m);
+		fill_reply_header((mach_msg_header_t *)m, h, sizeof m, 1);
+		wr32(m, 0x18, 1); wr32(m, 0x1c, 1); m[0x26] = MACH_MSG_TYPE_MOVE_SEND; m[0x27] = MACH_MSG_PORT_DESCRIPTOR;
+		struct iovec v = { m, sizeof m };
+		int rc = ws_ipc_send(c->fd, &v, 1, &fd, 1);
+		close(fd);
+		return rc;
+	}
 	static uint32_t fade_token, fade_held;                                  /* DisplayFade reservations: a token per Acquire, one holder at a time */
 	if (h->msgh_id == SLS_MSG_SetDisplayTransferByFormula) {                  /* decompiled __XSetDisplayTransferByFormula: size 0x4c, not complex; nine floats from 0x28 (min, max, gamma per channel); -304 otherwise */
 		if (!simple_ok(h, len, 0x4c)) return reply_simple(c->fd, h, -304);

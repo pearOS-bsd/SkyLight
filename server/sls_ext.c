@@ -25,7 +25,12 @@ int sls_generic_reply(conn *c, const uint8_t *buf, size_t len);
 
 int sls_ext_dispatch(conn *c, const uint8_t *buf, size_t len)
 {
-	int rc = sls_hotkey_dispatch(c, buf, len);         /* first: header-only requests (GetGlobalHotKeyOperatingMode) would otherwise get the recorded reply */
+	int rc;
+	if (((const mach_msg_header_t *)buf)->msgh_id == 32007 /* GetRealtimeDisplayInfoShmem: header-only too, the session family's recorded reply (-303) would take it */) {
+		rc = sls_display_dispatch(c, buf, len);
+		if (rc != -2) return rc;
+	}
+	rc = sls_hotkey_dispatch(c, buf, len);         /* first: header-only requests (GetGlobalHotKeyOperatingMode) would otherwise get the recorded reply */
 	if (rc != -2) return rc;
 	rc = sls_tap_dispatch(c, buf, len);               /* before the session family, whose recorded replies for header-only requests are the connection port's -303 */
 	if (rc != -2) return rc;
