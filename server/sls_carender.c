@@ -136,6 +136,7 @@ static void repaint(ws_server *srv, int sw, int sh)
 		ca_dirty[i] = 0;
 		if (nr == 0) ca_show(srv, sw, sh, i, CA_CTXS, 0, -1);
 		for (int k = 0; k < nr && k < CA_CTXS; k++) ca_show(srv, sw, sh, i, k, ca_scene_root_ctx(i, k), k);
+		if (getenv("WSD_CA_DEBUG")) for (int k = 0; k < nr && k < CA_CTXS; k++) { double gx, gy, gw, gh; if (ca_scene_root_geom(i, k, &gx, &gy, &gw, &gh)) fprintf(stderr, "WindowServer:   root %d layer: position %g,%g size %gx%g\n", k, gx, gy, gw, gh); }
 		if (getenv("WSD_CA_DEBUG")) for (int k = 0; k < nr && k < CA_CTXS; k++) { uint32_t cx = ca_scene_root_ctx(i, k); fprintf(stderr, "WindowServer:   scene %d root %d: context %u bound to window %u\n", i, k, (unsigned)cx, (unsigned)wsd_layer_ctx_window(cx)); }
 		if (getenv("WSD_CA_DEBUG")) { int nl, ni; ca_scene_info(i, &nl, &ni); fprintf(stderr, "WindowServer: scene %d (client %u): %d layers, %d images, %d contexts\n", i, (unsigned)ca_scene_ctx(i), nl, ni, nr); }
 	}

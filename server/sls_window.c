@@ -289,6 +289,13 @@ int sls_window_dispatch(conn *c, const uint8_t *buf, size_t len)
 		int err; int osz = ool_request(h, buf, len, 0x3c, &err);
 		if (osz < 0) return reply_simple(c->fd, h, err);
 		if ((uint32_t)osz != rd32(buf, 0x38)) return reply_simple(c->fd, h, -300);
+		{ uint32_t wid = rd32(buf, 0x34);
+		  if (getenv("WSD_TRACE")) {
+			ws_rect *rc = NULL; int nr = 0; ws_rect bb; const uint8_t *od = buf + 0x3c;
+			if (od && osz > 0 && ws_region_parse(od, (uint32_t)osz, &rc, &nr, &bb) == 0) fprintf(stderr, "WindowServer: SetWindowOpaqueShape window %u: %d rects, bounds %g,%g %gx%g\n", wid, nr, (double)bb.x, (double)bb.y, (double)bb.w, (double)bb.h);
+			else fprintf(stderr, "WindowServer: SetWindowOpaqueShape window %u: %d bytes (not parsed)\n", wid, osz);
+			free(rc);
+		  } }
 		(void)holds_rights(c, rd32(buf, 0x34));                                     /* the opaque shape only helps the compositor skip work: accepted, not used yet */
 		return reply_simple(c->fd, h, 0);
 	}
