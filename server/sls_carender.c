@@ -90,6 +90,16 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 	int lvl = 5;
 	ws_wid bound = ctx ? (ws_wid)wsd_layer_ctx_window(ctx) : 0;
 
+	if (bound && ws_window_exists(srv, bound) && root >= 0) {
+		/* the window server of the Mac takes the size of a window from the root layer of its context (a window made by AppKit has an empty shape and is 1x1 here).  The position is not sent to the window server
+		 * by any message that was found (see docs/EVIDENCE.md, 34th pass): until it is known the window is centred on the screen, and ordered in. */
+		double gx, gy, gw, gh; ws_rect cur;
+		if (ws_window_frame(srv, bound, &cur) == 0 && cur.w <= 1 && cur.h <= 1 && ca_scene_root_geom(scene, root, &gx, &gy, &gw, &gh) && gw > 1 && gh > 1 && gw <= sw && gh <= sh) {
+			ws_set_window_frame(srv, bound, (int)((sw - gw) / 2), (int)((sh - gh) / 2), (int)gw, (int)gh);
+			if (gh > 40) ws_order_window(srv, bound, WS_ABOVE, 0);			/* the thin full-width windows of AppKit (the title bar: 1920x30) stay out, as on the Mac (they are not on screen there); what orders the others on the Mac is not known (no message does) */
+			fprintf(stderr, "WindowServer: window %u takes the size of its root layer: %gx%g, centred\n", (unsigned)bound, gw, gh);
+		}
+	}
 	if (bound && ws_window_exists(srv, bound)) {
 		ws_rect r;
 		if (ws_window_frame(srv, bound, &r) == 0 && r.w > 1 && r.h > 1) fr = r;
@@ -111,6 +121,7 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 	}
 	if ((b = ws_window_backing(srv, ca_cwins[scene][slot])) == NULL) return;
 	if (root >= 0) ca_paint_root(scene, root, b->px, b->w, b->h, (int)b->stride);
+	if (root >= 0 && getenv("WSD_CA_DEBUG")) { size_t nz = 0; for (int yy = 0; yy < b->h; yy++) for (int xx = 0; xx < b->w; xx++) if (((const uint8_t *)b->px)[yy * b->stride + xx * 4 + 3]) nz++; fprintf(stderr, "WindowServer: context %u painted into %dx%d: %zu non-transparent pixels\n", (unsigned)ctx, b->w, b->h, nz); }
 	if (root >= 0 && bound) {		/* the Liquid Glass of the context (CASDFElementLayers): the glass of the window it is bound to, drawn by the compositor under the content */
 		ca_glass gl[32]; int ng = ca_scene_glass(scene, root, b->h, gl, 32);
 		for (int q = 0; q < 32; q++) { if (q < ng) ws_set_window_glass_slot(srv, bound, q, (ws_rect){ gl[q].x, gl[q].y, gl[q].w, gl[q].h }, gl[q].radius, gl[q].mode); else if (ca_glass_used[scene][slot] > q) ws_set_window_glass_slot(srv, bound, q, (ws_rect){ 0, 0, 0, 0 }, 0, 0); }
