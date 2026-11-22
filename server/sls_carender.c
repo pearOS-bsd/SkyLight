@@ -99,7 +99,7 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 		double gx, gy, gw, gh; ws_rect cur;
 		if (ws_window_frame(srv, bound, &cur) == 0 && cur.w <= 1 && cur.h <= 1 && ca_scene_root_geom(scene, root, &gx, &gy, &gw, &gh) && gw > 1 && gh > 1 && gw <= sw && gh <= sh) {
 			ws_set_window_frame(srv, bound, (int)((sw - gw) / 2), (int)((sh - gh) / 2), (int)gw, (int)gh);
-			if (gh > 40) ws_order_window(srv, bound, WS_ABOVE, 0);			/* the thin full-width windows of AppKit (the title bar: 1920x30) stay out, as on the Mac (they are not on screen there); what orders the others on the Mac is not known (no message does) */
+			if (gh > 40) { ws_order_window(srv, bound, WS_ABOVE, 0); wsd_window_visible_pid((int)ca_scene_ctx(scene), (uint32_t)bound); }			/* the thin full-width windows of AppKit (the title bar: 1920x30) stay out, as on the Mac (they are not on screen there); what orders the others on the Mac is not known (no message does) */
 			fprintf(stderr, "WindowServer: window %u takes the size of its root layer: %gx%g, centred\n", (unsigned)bound, gw, gh);
 		}
 	}

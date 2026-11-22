@@ -392,6 +392,7 @@ int sls_window_dispatch(conn *c, const uint8_t *buf, size_t len)
 			if (op == 2) { op = 1; rel = 0; }
 			if (!w || !ws_window_exists(srv, w) || !holds_rights(c, w)) continue;
 			ws_order_window(srv, w, op > 0 ? WS_ABOVE : op < 0 ? WS_BELOW : WS_OUT, rel);
+			if (op > 0) wsd_window_visible(c, w);
 		}
 		return reply_simple(c->fd, h, 0);
 	}
