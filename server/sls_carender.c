@@ -21,10 +21,12 @@
 #define CA_MAXC 4
 #define CA_OOLN 512
 static struct { int fd; uint8_t *buf; size_t n, cap; } cl[CA_MAXC];
+static int ool_pending = -1;		/* the number of the message whose out-of-line data came last: the commit that names it follows (carender-stub numbers them, WindowServer may have been restarted since) */
 static struct { int used, msg, desc; uint8_t *data; size_t size; } ool[CA_OOLN];
 static uint8_t *ool_take(void *ctx, int msg, int desc, size_t *sz)
 {
 	(void)ctx;
+	if (getenv("CA_DEBUG")) fprintf(stderr, "wscarender: asked for out-of-line data %d/%d\n", msg, desc);
 	for (int i = 0; i < CA_OOLN; i++)
 		if (ool[i].used && ool[i].msg == msg && ool[i].desc == desc) { uint8_t *d = ool[i].data; *sz = ool[i].size; ool[i].used = 0; return d; }
 	return NULL;
@@ -35,6 +37,7 @@ static void ool_put(int msg, int desc, const uint8_t *d, size_t n)
 	for (int i = 0; i < CA_OOLN; i++) if (!ool[i].used) { slot = i; break; }
 	if (slot < 0) { slot = 0; for (int i = 1; i < CA_OOLN; i++) if (ool[i].msg < ool[slot].msg) slot = i; free(ool[slot].data); }	/* full: the oldest goes */
 	uint8_t *c = malloc(n ? n : 1);
+	if (getenv("CA_DEBUG")) fprintf(stderr, "wscarender: out-of-line data %d/%d: %zu bytes\n", msg, desc, n);
 	if (!c) { ool[slot].used = 0; return; }
 	memcpy(c, d, n);
 	ool[slot].used = 1; ool[slot].msg = msg; ool[slot].desc = desc; ool[slot].data = c; ool[slot].size = n;
@@ -176,9 +179,9 @@ int wsd_ca_read(int fd, ws_server *srv, int sw, int sh)
 			if (len > (64u << 20)) { close(fd); cl[ci].fd = -1; return -1; }
 			if (cl[ci].n - p - 8 < len) break;
 			const uint8_t *pl = cl[ci].buf + p + 8;
-			if (type == 3 && len > 4) { uint32_t pid; memcpy(&pid, pl, 4); int si = ca_feed_key(pid, pl + 4, len - 4); if (si >= 0 && si < CA_WINS) { ca_dirty[si] = 1; fed = 1; } }
-			else if (type == 1) { int si = ca_feed(pl, len); if (si >= 0 && si < CA_WINS) { ca_dirty[si] = 1; fed = 1; } }
-			else if (type == 2 && len >= 8) { uint32_t m, d; memcpy(&m, pl, 4); memcpy(&d, pl + 4, 4); ool_put((int)m, (int)d, pl + 8, len - 8); }
+			if (type == 3 && len > 4) { uint32_t pid; if (ool_pending >= 0) { ca_set_msg_number(ool_pending); ool_pending = -1; } memcpy(&pid, pl, 4); int si = ca_feed_key(pid, pl + 4, len - 4); if (si >= 0 && si < CA_WINS) { ca_dirty[si] = 1; fed = 1; } }
+			else if (type == 1) { if (ool_pending >= 0) { ca_set_msg_number(ool_pending); ool_pending = -1; } int si = ca_feed(pl, len); if (si >= 0 && si < CA_WINS) { ca_dirty[si] = 1; fed = 1; } }
+			else if (type == 2 && len >= 8) { uint32_t m, d; memcpy(&m, pl, 4); memcpy(&d, pl + 4, 4); ool_put((int)m, (int)d, pl + 8, len - 8); ool_pending = (int)m; }
 			p += 8 + len;
 		}
 		if (p) { memmove(cl[ci].buf, cl[ci].buf + p, cl[ci].n - p); cl[ci].n -= p; }
