@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <time.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/uio.h>
@@ -81,6 +82,29 @@ size_t sls_display_state(uint8_t *out, size_t cap, int W, int H)
 	return need;
 }
 
+
+/* the realtime display data page (30504): the timestamps follow the vsync of a 59.976 Hz display, written by a thread every 16.673 ms like the real server does (a page that never changes made the display
+ * link of CoreAnimation see a display that does not run) */
+static uint8_t *rt_page; static int page_thread_started;
+static void rt_page_update(uint8_t *page)
+{
+	struct timespec ts; clock_gettime(CLOCK_UPTIME, &ts);
+	uint64_t now = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec, per = 16673320ULL;
+	uint64_t vs = now - now % per;
+	uint64_t w64[] = { 0, per, vs, per, vs, per, per, vs, vs, vs - per };
+	memcpy(page, w64, sizeof w64);
+}
+static void *rt_page_thread(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		struct timespec d = { 0, 16673320 };
+		nanosleep(&d, NULL);
+		if (rt_page) rt_page_update(rt_page);
+	}
+	return NULL;
+}
+
 int sls_display_dispatch(conn *c, const uint8_t *buf, size_t len)
 {
 	const mach_msg_header_t *h = (const mach_msg_header_t *)buf;
@@ -113,11 +137,8 @@ int sls_display_dispatch(conn *c, const uint8_t *buf, size_t len)
 			if (pfd < 0 || ftruncate(pfd, 4096) != 0 || (page = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, pfd, 0)) == MAP_FAILED) { if (pfd >= 0) close(pfd); pfd = -1; page = NULL; return reply_simple(c->fd, h, CGS_ERROR_FAILURE); }
 			memset(page, 0, 4096);
 		}
-		struct timespec ts; clock_gettime(CLOCK_UPTIME, &ts);
-		uint64_t now = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec, per = 16673320ULL;
-		uint64_t vs = now - now % per;				/* the last vsync boundary */
-		uint64_t w64[] = { 0, per, vs, per, vs, per, per, vs, vs, vs - per };
-		memcpy(page, w64, sizeof w64);				/* +0x00 .. +0x4f */
+		if (!page_thread_started) { page_thread_started = 1; rt_page = page; pthread_t th; pthread_create(&th, NULL, rt_page_thread, NULL); pthread_detach(th); }
+		rt_page_update(page);
 		float f58 = 300.0f, f5c = 753.98f, f64 = 1.0f; uint64_t one = 1;
 		memcpy(page + 0x58, &f58, 4); memcpy(page + 0x5c, &f5c, 4); memcpy(page + 0x64, &f64, 4); memcpy(page + 0x88, &one, 8);
 		uint8_t m[0x28]; memset(m, 0, sizeof m);
