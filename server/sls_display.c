@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <time.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/uio.h>
@@ -100,6 +101,30 @@ int sls_display_dispatch(conn *c, const uint8_t *buf, size_t len)
 		int rc = ws_ipc_send(c->fd, &v, 1, &fd, 1);
 		close(fd);
 		return rc;
+	}
+	if (h->msgh_id == 30504 /* GetRealtimeDisplayDataShmemPort */) {         /* request 0x24 bytes, the reply (30604) is complex, 0x28 bytes, one port: a page of 4 KB with the timing of the display that SkyLight's display_get_timing_common
+		 * reads through realtime_data_for_display (decompiled): at +0x88 a byte 1 = valid; +0x08, +0x18, +0x28, +0x30 the refresh interval in nanoseconds (the Mac VM: 16673320 = 59.976 Hz; CALocalDisplay's update block
+		 * divides it by 1e9, CADisplayLink takes it as the period, and 0 makes the display link never start); +0x10, +0x20, +0x38, +0x40, +0x48 host times (mach_absolute_time) of the last vsyncs; +0x58 two floats and
+		 * +0x64 1.0f as on the Mac.  Found with SwiftUI/tools/msgtrace.c (the page dumped) and the decompilation of SkyLight and QuartzCore (SwiftUI/docs/EVIDENCE.md, 49th pass). */
+		if (!simple_ok(h, len, 0x24)) return reply_simple(c->fd, h, -304);
+		static int pfd = -1; static uint8_t *page;
+		if (pfd < 0) {
+			pfd = ws_shm_create_anon();
+			if (pfd < 0 || ftruncate(pfd, 4096) != 0 || (page = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED, pfd, 0)) == MAP_FAILED) { if (pfd >= 0) close(pfd); pfd = -1; page = NULL; return reply_simple(c->fd, h, CGS_ERROR_FAILURE); }
+			memset(page, 0, 4096);
+		}
+		struct timespec ts; clock_gettime(CLOCK_UPTIME, &ts);
+		uint64_t now = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec, per = 16673320ULL;
+		uint64_t vs = now - now % per;				/* the last vsync boundary */
+		uint64_t w64[] = { 0, per, vs, per, vs, per, per, vs, vs, vs - per };
+		memcpy(page, w64, sizeof w64);				/* +0x00 .. +0x4f */
+		float f58 = 300.0f, f5c = 753.98f, f64 = 1.0f; uint64_t one = 1;
+		memcpy(page + 0x58, &f58, 4); memcpy(page + 0x5c, &f5c, 4); memcpy(page + 0x64, &f64, 4); memcpy(page + 0x88, &one, 8);
+		uint8_t m[0x28]; memset(m, 0, sizeof m);
+		fill_reply_header((mach_msg_header_t *)m, h, sizeof m, 1);
+		wr32(m, 0x18, 1); wr32(m, 0x1c, 1); m[0x26] = MACH_MSG_TYPE_MOVE_SEND; m[0x27] = MACH_MSG_PORT_DESCRIPTOR;
+		struct iovec v = { m, sizeof m };
+		return ws_ipc_send(c->fd, &v, 1, &pfd, 1);		/* the descriptor is a copy: pfd stays open (one page for every client) */
 	}
 	static uint32_t fade_token, fade_held;                                  /* DisplayFade reservations: a token per Acquire, one holder at a time */
 	if (h->msgh_id == SLS_MSG_SetDisplayTransferByFormula) {                  /* decompiled __XSetDisplayTransferByFormula: size 0x4c, not complex; nine floats from 0x28 (min, max, gamma per channel); -304 otherwise */
