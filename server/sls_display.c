@@ -41,8 +41,21 @@ extern const uint32_t disp_head[64], disp_rec[33], disp_tail[16];
 extern int wsd_screen_w, wsd_screen_h;
 static const uint8_t DISPLAY_UUID[16] = { 0x5E, 0x1D, 0x1A, 0x5B, 0x0C, 0x3E, 0x4D, 0x5B, 0x9D, 0x2A, 0x6F, 0x57, 0xA5, 0xB0, 0xC0, 0xDE };
 
+extern const uint8_t disp_mac_state[]; extern const size_t disp_mac_state_len;
+/* The state in the layout of macOS 26.7.2 (see sls_display_mac.c): the main display is patched into the recorded one (the sizes at 0x80, 0xa0, 0xc0 as doubles, the current mode record at 0x100: size twice, row bytes). */
+static size_t sls_display_state_26(uint8_t *out, size_t cap, int W, int H)
+{
+	if (cap < disp_mac_state_len) return 0;
+	memcpy(out, disp_mac_state, disp_mac_state_len);
+	uint32_t *w = (uint32_t *)out;
+	for (int i = 0; i < 3; i++) { double dw = W, dh = H; memcpy(out + 0x80 + 0x20 * i, &dw, 8); memcpy(out + 0x88 + 0x20 * i, &dh, 8); }
+	w[64 + 6] = w[64 + 8] = (uint32_t)W; w[64 + 7] = w[64 + 9] = (uint32_t)H; w[64 + 10] = (uint32_t)W * 4;
+	return disp_mac_state_len;
+}
+
 size_t sls_display_state(uint8_t *out, size_t cap, int W, int H)
 {
+	if (getenv("WSD_DSS_26")) return sls_display_state_26(out, cap, W, H);	/* the layout of the Mac VM (see sls_display_mac.c): displayID and refresh differ, not the default yet */
 	static const int std[][2] = { { 640, 480 }, { 800, 600 }, { 1024, 768 }, { 1280, 720 }, { 1280, 800 }, { 1366, 768 }, { 1440, 900 }, { 1600, 900 }, { 1920, 1080 } };
 	int mw[16], mh[16], n = 0, cur = 0;
 	for (size_t i = 0; i < sizeof std / sizeof std[0] && n < 15; i++) if (std[i][0] < W && std[i][1] < H) { mw[n] = std[i][0]; mh[n] = std[i][1]; n++; }
@@ -129,7 +142,7 @@ int sls_display_dispatch(conn *c, const uint8_t *buf, size_t len)
 	}
 	if (h->msgh_id != SLS_MSG_GetDisplaySystemState) return -2;
 	if (!simple_ok(h, len, 0x28)) return reply_simple(c->fd, h, -304);
-	uint8_t blob[64 * 4 + 16 * 33 * 4 + 16 * 4 + 8];
+	uint8_t blob[4096];
 	size_t n = sls_display_state(blob, sizeof blob, wsd_screen_w, wsd_screen_h);
 	uint8_t m[0x38]; memset(m, 0, sizeof m);
 	fill_reply_header((mach_msg_header_t *)m, h, sizeof m, 1);
