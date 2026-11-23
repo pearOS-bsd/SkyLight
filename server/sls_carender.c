@@ -82,6 +82,8 @@ static int ca_dirty[CA_WINS];
  * (SetWindowLayerContext), at the frame of that window, with its level and order.  So a window of WindowServer for each context with a root layer: the frame, level and order of the window that its
  * context is bound to; a context that is bound to none (the Dock's layers) fills the screen.  A client whose contexts have no root yet is painted as one scene on the screen. */
 #define CA_CTXS 8
+static int ca_pend_order[CA_WINS][CA_CTXS + 1];		/* a window that waits to be ordered in until its content has something to show */
+static ws_wid ca_bwins[CA_WINS][CA_CTXS + 1];		/* the window of the client that a render window shows (0: none) */
 static ws_wid ca_cwins[CA_WINS][CA_CTXS + 1];		/* [scene][root index]; the last one: the whole scene (no roots known) */
 static int ca_cw[CA_WINS][CA_CTXS + 1], ca_ch[CA_WINS][CA_CTXS + 1];
 
@@ -102,7 +104,7 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 		 * the visible frame is 0,65 1920x985: the menu bar takes 30 above, the Dock 65 below; slightly above the centre: -2.5), and it believes this frame in everything it computes (the location of a click is the
 		 * screen point minus this frame): the window server has to put the window where AppKit thinks it is */
 		ws_set_window_frame(srv, bound, (int)((sw - gw) / 2), (int)(30 + (sh - 95 - gh) / 2.0 - 2.5 + 0.5), (int)gw, (int)gh);
-			if (gh > 40) { ws_order_window(srv, bound, WS_ABOVE, 0); wsd_window_visible_pid((int)ca_scene_ctx(scene), (uint32_t)bound); }			/* the thin full-width windows of AppKit (the title bar: 1920x30) stay out, as on the Mac (they are not on screen there); what orders the others on the Mac is not known (no message does) */
+			if (gh > 40) ca_pend_order[scene][slot] = 1;			/* the thin full-width windows of AppKit (the title bar: 1920x30) stay out, as on the Mac (they are not on screen there); what orders the others on the Mac is not known (no message does) */
 			fprintf(stderr, "WindowServer: window %u takes the size of its root layer: %gx%g, centred\n", (unsigned)bound, gw, gh);
 		}
 	}
@@ -117,17 +119,28 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 		const char *lv = getenv("WSD_CA_LEVEL");
 		ws_wid w = ws_create_window(srv, fr);
 		if (!w) return;
-		ca_cwins[scene][slot] = w; ca_cw[scene][slot] = fr.w; ca_ch[scene][slot] = fr.h;
+		ca_cwins[scene][slot] = w; ca_cw[scene][slot] = fr.w; ca_ch[scene][slot] = fr.h; ca_bwins[scene][slot] = bound;
 		ws_set_window_level(srv, w, bound ? lvl : (lv ? atoi(lv) : 5));
 		if (bound) { ws_rect none = { 0, 0, 0, 0 }; ws_window_set_event_shape(srv, w, &none, 1); }	/* the render window of a client's window only shows its content: pointer events go to the client's window below it */
-		ws_order_window(srv, w, WS_ABOVE, bound ? bound : 0);
+		if (!bound || ws_window_on_screen(srv, bound)) ws_order_window(srv, w, WS_ABOVE, bound ? bound : 0);	/* the render window of a window that AppKit never ordered in (a hidden helper: TUINSWindow 500 x 500, isVisible false on the Mac too) stays out */
 		fprintf(stderr, "WindowServer: render context %u (client %u): window %u%s (%d,%d %dx%d)\n", (unsigned)ctx, (unsigned)ca_scene_ctx(scene), (unsigned)w, bound ? " at the window of the client" : "", fr.x, fr.y, fr.w, fr.h);
 	} else if (bound) {
+		ca_bwins[scene][slot] = bound;
 		ws_move_window(srv, ca_cwins[scene][slot], fr.x, fr.y);
 		ws_set_window_level(srv, ca_cwins[scene][slot], lvl);
 	}
 	if ((b = ws_window_backing(srv, ca_cwins[scene][slot])) == NULL) return;
 	if (root >= 0) ca_paint_root(scene, root, b->px, b->w, b->h, (int)b->stride);
+	if (bound && ws_window_exists(srv, ca_cwins[scene][slot])) {
+		int bon = ws_window_on_screen(srv, bound), ron = ws_window_on_screen(srv, ca_cwins[scene][slot]);
+		if (bon && !ron) ws_order_window(srv, ca_cwins[scene][slot], WS_ABOVE, bound);
+		else if (!bon && ron) ws_order_window(srv, ca_cwins[scene][slot], WS_OUT, 0);
+	}
+	if (root >= 0 && bound && ca_pend_order[scene][slot]) {		/* ordered in only when the window has something to show: AppKit makes empty helper windows (SwiftUI's text field opens a 500 x 500 one) that must not take the pointer or the keyboard */
+		size_t nzp = 0;
+		for (int yy = 0; yy < b->h && !nzp; yy++) for (int xx = 0; xx < b->w; xx++) if (((const uint8_t *)b->px)[yy * b->stride + xx * 4 + 3]) { nzp = 1; break; }
+		if (nzp) { ca_pend_order[scene][slot] = 0; ws_order_window(srv, bound, WS_ABOVE, 0); wsd_window_visible_pid((int)ca_scene_ctx(scene), (uint32_t)bound); }
+	}
 	if (root >= 0 && getenv("WSD_CA_DEBUG")) { size_t nz = 0; for (int yy = 0; yy < b->h; yy++) for (int xx = 0; xx < b->w; xx++) if (((const uint8_t *)b->px)[yy * b->stride + xx * 4 + 3]) nz++; fprintf(stderr, "WindowServer: context %u painted into %dx%d: %zu non-transparent pixels\n", (unsigned)ctx, b->w, b->h, nz); }
 	if (root >= 0 && bound) {		/* the Liquid Glass of the context (CASDFElementLayers): the glass of the window it is bound to, drawn by the compositor under the content */
 		ca_glass gl[32]; int ng = ca_scene_glass(scene, root, b->h, gl, 32);
@@ -143,6 +156,13 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 
 		ws_set_window_level(srv, ca_cwins[scene][slot], opaque ? -2147483623 /* kCGDesktopWindowLevel: the icons of the Finder (-2147483603) are above */ : 5);
 	}
+}
+
+/* the client's window that a render window shows: keyboard focus and events of the render window belong to it (0: not a render window of a client window) */
+ws_wid sls_render_bound_window(ws_wid rw)
+{
+	for (int i = 0; i < CA_WINS; i++) for (int j = 0; j <= CA_CTXS; j++) if (rw && ca_cwins[i][j] == rw && ca_bwins[i][j]) return ca_bwins[i][j];
+	return 0;
 }
 
 static void repaint(ws_server *srv, int sw, int sh)
