@@ -98,7 +98,10 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 		 * by any message that was found (see docs/EVIDENCE.md, 34th pass): until it is known the window is centred on the screen, and ordered in. */
 		double gx, gy, gw, gh; ws_rect cur;
 		if (ws_window_frame(srv, bound, &cur) == 0 && cur.w <= 1 && cur.h <= 1 && ca_scene_root_geom(scene, root, &gx, &gy, &gw, &gh) && gw > 1 && gh > 1 && gw <= sw && gh <= sh) {
-			ws_set_window_frame(srv, bound, (int)((sw - gw) / 2), (int)((sh - gh) / 2), (int)gw, (int)gh);
+			/* AppKit centres a window that has no frame in the visible frame of the screen (measured on the Mac with a SwiftUI window of 900 x 450 on 1920 x 1080: NSWindow frame 510,335 = top 295;
+		 * the visible frame is 0,65 1920x985: the menu bar takes 30 above, the Dock 65 below; slightly above the centre: -2.5), and it believes this frame in everything it computes (the location of a click is the
+		 * screen point minus this frame): the window server has to put the window where AppKit thinks it is */
+		ws_set_window_frame(srv, bound, (int)((sw - gw) / 2), (int)(30 + (sh - 95 - gh) / 2.0 - 2.5 + 0.5), (int)gw, (int)gh);
 			if (gh > 40) { ws_order_window(srv, bound, WS_ABOVE, 0); wsd_window_visible_pid((int)ca_scene_ctx(scene), (uint32_t)bound); }			/* the thin full-width windows of AppKit (the title bar: 1920x30) stay out, as on the Mac (they are not on screen there); what orders the others on the Mac is not known (no message does) */
 			fprintf(stderr, "WindowServer: window %u takes the size of its root layer: %gx%g, centred\n", (unsigned)bound, gw, gh);
 		}
@@ -116,6 +119,7 @@ static void ca_show(ws_server *srv, int sw, int sh, int scene, int slot, uint32_
 		if (!w) return;
 		ca_cwins[scene][slot] = w; ca_cw[scene][slot] = fr.w; ca_ch[scene][slot] = fr.h;
 		ws_set_window_level(srv, w, bound ? lvl : (lv ? atoi(lv) : 5));
+		if (bound) { ws_rect none = { 0, 0, 0, 0 }; ws_window_set_event_shape(srv, w, &none, 1); }	/* the render window of a client's window only shows its content: pointer events go to the client's window below it */
 		ws_order_window(srv, w, WS_ABOVE, bound ? bound : 0);
 		fprintf(stderr, "WindowServer: render context %u (client %u): window %u%s (%d,%d %dx%d)\n", (unsigned)ctx, (unsigned)ca_scene_ctx(scene), (unsigned)w, bound ? " at the window of the client" : "", fr.x, fr.y, fr.w, fr.h);
 	} else if (bound) {
