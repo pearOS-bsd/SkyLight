@@ -17,6 +17,8 @@
 #include "ws.h"
 #include "ca_scene.h"
 #include "wsd_priv.h"
+#include <signal.h>
+#include <errno.h>
 
 #define CA_MAXC 4
 #define CA_OOLN 512
@@ -179,6 +181,29 @@ static void repaint(ws_server *srv, int sw, int sh)
 		if (getenv("WSD_CA_DEBUG")) { int nl, ni; ca_scene_info(i, &nl, &ni); fprintf(stderr, "WindowServer: scene %d (client %u): %d layers, %d images, %d contexts\n", i, (unsigned)ca_scene_ctx(i), nl, ni, nr); }
 	}
 	ws_server_invalidate(srv);
+}
+
+/* the clients that are gone: on the Mac the windows of a client go with its connection; here the scenes are keyed by the pid that carender-stub reports, so a scene whose process
+ * no longer exists loses its render windows and its layers (without this a Dock that was restarted left its old full-screen windows above the new one).  Called about once a second. */
+int wsd_ca_reap(ws_server *srv)
+{
+	int gone = 0;
+
+	for (int i = 0; i < ca_nscenes() && i < CA_WINS; i++) {
+		uint32_t pid = ca_scene_ctx(i);
+
+		if (pid == 0 || pid > 0x7fffffff || kill((pid_t)pid, 0) == 0 || errno != ESRCH) continue;
+		for (int k = 0; k <= CA_CTXS; k++) {
+			if (ca_cwins[i][k]) ws_release_window(srv, ca_cwins[i][k]);
+			ca_cwins[i][k] = 0; ca_bwins[i][k] = 0; ca_cw[i][k] = ca_ch[i][k] = 0; ca_pend_order[i][k] = 0; ca_glass_used[i][k] = 0;
+		}
+		ca_dirty[i] = 0;
+		ca_scene_drop(i);
+		gone = 1;
+		fprintf(stderr, "WindowServer: the render client %u is gone: its windows are released\n", (unsigned)pid);
+	}
+	if (gone) ws_server_invalidate(srv);
+	return (gone);
 }
 
 /* data is readable on the client's descriptor: returns -1 when it closed (the caller drops it from its queue) */
