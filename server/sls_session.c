@@ -11,9 +11,10 @@
 
 int sls_golden_reply(conn *c, const mach_msg_header_t *h);
 
-/* CreateApplication (30283): the process record a connection needs for key focus and the process calls. Request: PSN@0x20 (hi, lo), session id@0x28,
- * pid@0x2c, application type@0x30 (1..4), euid@0x34, name offset@0x38, name length@0x3c (<= 0x80), name@0x40, then flag byte, two u32. Size = pad4(len) + 0x4c.
- * Unverified live: which argument combinations the real server accepts (a zero session id gives -50 there). */
+/* CreateApplication (30283): the process record a connection needs for key focus and the process calls. Request (packed by SkyLight's __CGSCreateApplication, read
+ * from its code and from the request of the real Dock on pearOS, 2026-11-27): PSN@0x20 (hi, lo), session id@0x28 (the audit session: LSSessionID of launchservicesd),
+ * @0x2c a u32 the Dock sends as 0, application type@0x30 (1..4), pid@0x34, name offset@0x38, name length@0x3c (<= 0x80), name@0x40, then a flag byte, two u32.
+ * Size = pad4(len) + 0x4c.  A zero session id gives -50 on the real server too. */
 static int appearance_theme = -1;                               /* -1: not read yet */
 static int do_create_application(conn *c, const uint8_t *buf, size_t len)
 {
@@ -21,7 +22,7 @@ static int do_create_application(conn *c, const uint8_t *buf, size_t len)
 	if ((h->msgh_bits & MACH_MSGH_BITS_COMPLEX) || len != h->msgh_size || h->msgh_size < 0x4c || h->msgh_size > 0xcc) return reply_simple(c->fd, h, -304);
 	uint32_t n = rd32(buf, 0x3c), P = (n + 3) & ~3u;
 	if (n > 0x80 || h->msgh_size != P + 0x4c) return reply_simple(c->fd, h, -304);
-	uint32_t sid = rd32(buf, 0x28), pid = rd32(buf, 0x2c), type = rd32(buf, 0x30);
+	uint32_t sid = rd32(buf, 0x28), pid = rd32(buf, 0x34), type = rd32(buf, 0x30);
 	uint8_t flag = buf[0x40 + P];
 	if (type < 1 || type > 4 || n == 0 || buf[0x40] == 0 || (pid < 2 && flag != 1)) return reply_simple(c->fd, h, -50);
 	if (!sid) return reply_simple(c->fd, h, -50);                                   /* "App checking in with invalid session id" */
